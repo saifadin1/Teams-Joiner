@@ -7,7 +7,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
 # --- CONFIGURATION ---
-CHANNEL_NAME = "ch"   # Name of the channel to watch
+CHANNEL_NAME = "PD_Lab2"   # Name of the channel to watch
 CHECK_DELAY = 3       # How fast to scan (seconds)
 # ---------------------
 
@@ -35,28 +35,74 @@ def find_and_enter_channel(driver):
 
 def join_meeting_flow(driver):
     """
-    This function handles the 'Join Now' screen (camera/mic setup)
-    once the meeting window is open.
+    Handles the 'Join Now' screen (camera/mic setup).
+    Includes fixes for nested text and iframes.
     """
-    print("⏳ Waiting for the purple 'Join now' button...")
+    print("⏳ Handling Pre-Join Lobby...")
+
+    # Define robust selectors (Priority order)
+    # 1. data-tid is the most stable ID used by MS developers
+    # 2. aria-label handles accessibility tags
+    # 3. contains(., 'text') finds text even if wrapped in spans/divs
+    join_btn_xpaths = [
+        "//button[@data-tid='prejoin-join-button']",
+        "//button[contains(@aria-label, 'Join now')]",
+        "//button[contains(., 'Join now')]",
+        "//button[contains(@class, 'join-btn')]"
+    ]
+
     try:
-        # Look for the final join button
-        join_btn = WebDriverWait(driver, 20).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(@data-tid, 'join') or contains(text(), 'Join now')]"))
-        )
-        join_btn.click()
-        print("🚀 JOINED SUCCESSFUL!")
+        # Wait a moment for the new window/UI to fully render
+        time.sleep(5)
+
+        # --- FIX 1: IFRAME CHECK ---
+        # Sometimes the meeting lobby is inside an iframe. We check for that.
+        iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        if iframes:
+            print(f"   (Found {len(iframes)} iframes. Checking content...)")
+            # Usually the main meeting frame is the last one loaded
+            driver.switch_to.frame(iframes[-1])
+
+        # --- FIX 2: ROBUST CLICKER ---
+        found_btn = None
+        for xpath in join_btn_xpaths:
+            try:
+                # We use a short wait for each selector attempt
+                found_btn = WebDriverWait(driver, 3).until(
+                    EC.element_to_be_clickable((By.XPATH, xpath))
+                )
+                if found_btn:
+                    print(f"✅ Found button using: {xpath}")
+                    found_btn.click()
+                    break
+            except:
+                continue
+        
+        if not found_btn:
+            # If we switched to an iframe and failed, switch back to main just in case
+            driver.switch_to.default_content()
+            raise Exception("Could not find 'Join now' button with any known selector.")
+
+        print("🚀 JOIN SUCCESSFUL!")
         
         # Wait 10 seconds for connection, then raise hand
         time.sleep(10)
         print("🖐️ Raising hand...")
-        webdriver.ActionChains(driver).key_down(Keys.CONTROL).key_down(Keys.SHIFT).send_keys('k').key_up(Keys.SHIFT).key_up(Keys.CONTROL).perform()
+        
+        # Ensure we are focused on the body before sending keys
+        driver.switch_to.default_content()
+        webdriver.ActionChains(driver)\
+            .key_down(Keys.CONTROL).key_down(Keys.SHIFT).send_keys('k')\
+            .key_up(Keys.SHIFT).key_up(Keys.CONTROL).perform()
+            
         print("✅ Hand raised. Script finished.")
         return True
+
     except Exception as e:
         print(f"❌ Failed at Join Now screen: {e}")
         return False
-
+    
+    
 def watch_and_act(driver):
     print("\n👀 WATCHING FOR MEETINGS (Links OR Buttons)...")
     print("   (Press Ctrl+C to stop script)")
