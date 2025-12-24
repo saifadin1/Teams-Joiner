@@ -73,7 +73,7 @@ CHECK_DELAY = 3       # How many seconds to wait between checks
 3. Run:
 
 ```bash
-python auto_join_final.py
+python simple_joiner.py
 ```
 
 ### What the script does:
